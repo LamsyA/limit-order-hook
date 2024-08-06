@@ -34,47 +34,28 @@ contract TakeProfitsHookTest is Test, Deployers {
 
     TakeProfitsHook hook;
 
-	function setUp() public {
+    function setUp() public {
         // Deploy v4 core contracts
         deployFreshManagerAndRouters();
-    
+
         // Deploy two test tokens
         (token0, token1) = deployMintAndApprove2Currencies();
-    
+
         // Deploy our hook
-        uint160 flags = uint160(
-            Hooks.AFTER_INITIALIZE_FLAG | Hooks.AFTER_SWAP_FLAG
-        );
+        uint160 flags = uint160(Hooks.AFTER_INITIALIZE_FLAG | Hooks.AFTER_SWAP_FLAG);
         address hookAddress = address(flags);
-        deployCodeTo(
-            "TakeProfitsHook.sol",
-            abi.encode(manager, ""),
-            hookAddress
-        );
+        deployCodeTo("TakeProfitsHook.sol", abi.encode(manager, ""), hookAddress);
         hook = TakeProfitsHook(hookAddress);
-    
+
         // Approve our hook address to spend these tokens as well
-        MockERC20(Currency.unwrap(token0)).approve(
-            address(hook),
-            type(uint256).max
-        );
-        MockERC20(Currency.unwrap(token1)).approve(
-            address(hook),
-            type(uint256).max
-        );
-    
+        MockERC20(Currency.unwrap(token0)).approve(address(hook), type(uint256).max);
+        MockERC20(Currency.unwrap(token1)).approve(address(hook), type(uint256).max);
+
         // Initialize a pool with these two tokens
-        (key, ) = initPool(
-            token0,
-            token1,
-            hook,
-            3000,
-            SQRT_PRICE_1_1,
-            ZERO_BYTES
-        );
-    
+        (key,) = initPool(token0, token1, hook, 3000, SQRT_PRICE_1_1, ZERO_BYTES);
+
         // Add initial liquidity to the pool
-    
+
         // Some liquidity from -60 to +60 tick range
         modifyLiquidityRouter.modifyLiquidity(
             key,
@@ -117,51 +98,43 @@ contract TakeProfitsHookTest is Test, Deployers {
         int24 tick = 100;
         uint256 amount = 10e18;
         bool zeroForOne = true;
-    
+
         // Note the original balance of token0 we have
         uint256 originalBalance = token0.balanceOfSelf();
-    
+
         // Place the order
         int24 tickLower = hook.placeOrder(key, tick, zeroForOne, amount);
-    
+
         // Note the new balance of token0 we have
         uint256 newBalance = token0.balanceOfSelf();
-    
+
         // Since we deployed the pool contract with tick spacing = 60
         // i.e. the tick can only be a multiple of 60
         // the tickLower should be 60 since we placed an order at tick 100
         assertEq(tickLower, 60);
-    
+
         // Ensure that our balance of token0 was reduced by `amount` tokens
         assertEq(originalBalance - newBalance, amount);
-    
+
         // Check the balance of ERC-1155 tokens we received
         uint256 positionId = hook.getPositionId(key, tickLower, zeroForOne);
         uint256 tokenBalance = hook.balanceOf(address(this), positionId);
-    
+
         // Ensure that we were, in fact, given ERC-1155 tokens for the order
         // equal to the `amount` of token0 tokens we placed the order for
         assertTrue(positionId != 0);
         assertEq(tokenBalance, amount);
     }
 
-    function onERC1155Received(
-        address,
-        address,
-        uint256,
-        uint256,
-        bytes calldata
-    ) external pure returns (bytes4) {
+    function onERC1155Received(address, address, uint256, uint256, bytes calldata) external pure returns (bytes4) {
         return this.onERC1155Received.selector;
     }
-    
-    function onERC1155BatchReceived(
-        address,
-        address,
-        uint256[] calldata,
-        uint256[] calldata,
-        bytes calldata
-    ) external pure returns (bytes4) {
+
+    function onERC1155BatchReceived(address, address, uint256[] calldata, uint256[] calldata, bytes calldata)
+        external
+        pure
+        returns (bytes4)
+    {
         return this.onERC1155BatchReceived.selector;
     }
 
@@ -170,26 +143,26 @@ contract TakeProfitsHookTest is Test, Deployers {
         int24 tick = 100;
         uint256 amount = 10e18;
         bool zeroForOne = true;
-    
+
         uint256 originalBalance = token0.balanceOfSelf();
         int24 tickLower = hook.placeOrder(key, tick, zeroForOne, amount);
         uint256 newBalance = token0.balanceOfSelf();
-    
+
         assertEq(tickLower, 60);
         assertEq(originalBalance - newBalance, amount);
-    
+
         // Check the balance of ERC-1155 tokens we received
         uint256 positionId = hook.getPositionId(key, tickLower, zeroForOne);
         uint256 tokenBalance = hook.balanceOf(address(this), positionId);
         assertEq(tokenBalance, amount);
-    
+
         // Cancel the order
         hook.cancelOrder(key, tickLower, zeroForOne);
-    
+
         // Check that we received our token0 tokens back, and no longer own any ERC-1155 tokens
         uint256 finalBalance = token0.balanceOfSelf();
         assertEq(finalBalance, originalBalance);
-    
+
         tokenBalance = hook.balanceOf(address(this), positionId);
         assertEq(tokenBalance, 0);
     }
